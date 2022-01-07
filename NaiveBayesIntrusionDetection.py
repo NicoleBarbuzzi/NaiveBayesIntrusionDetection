@@ -1,10 +1,11 @@
 from sklearn.naive_bayes import GaussianNB
-from sklearn.preprocessing import LabelEncoder, Normalizer
+from sklearn.preprocessing import LabelEncoder, KBinsDiscretizer
 import pandas as pd
 import numpy as np
-from sklearn import metrics
+from sklearn.metrics import confusion_matrix, accuracy_score
 import matplotlib.pyplot as plt
 import seaborn as sns
+
 
 def y_assignment(y_base):
     new_y_base = []
@@ -72,21 +73,15 @@ def after_classification(x_train, x_test, y_train, y_test):
     return train_accuracy, test_accuracy
 
 def accuracy_confusion_matrix(y_train, y_train_pred, y_test, y_test_pred):
-    train_accuracy = metrics.accuracy_score(y_train, y_train_pred)
-    test_accuracy = metrics.accuracy_score(y_test, y_test_pred)
+    train_accuracy = accuracy_score(y_train, y_train_pred)
+    test_accuracy = accuracy_score(y_test, y_test_pred)
 
     #confusion matrix
     labels = ['normal.', 'dos.', 'r2l', 'u2r.', 'probe.']
-    cm = metrics.confusion_matrix(y_test, y_test_pred, normalize='true')
+    cm = confusion_matrix(y_test, y_test_pred, normalize='true', labels=['normal.', 'dos.', 'r2l.', 'u2r.', 'probe.'])
 
-    ax = sns.heatmap(cm, annot=True, fmt='.2%')
-    ax.set_title('Confusion matrix \n\n')
-    ax.set_xlabel('Predicted Values')
-    ax.set_ylabel('Actual Values')
-
-    ax.xaxis.set_ticklabels(labels)
-    ax.yaxis.set_ticklabels(labels)
-
+    dataFrame = pd.DataFrame(cm, index=labels, columns=labels)
+    sns.heatmap(dataFrame, annot=True, fmt='.2%')
     print(cm)
 
     return train_accuracy, test_accuracy
@@ -101,6 +96,7 @@ def function(name):
 
 
 if __name__ == '__main__':
+
     train = pd.read_csv("kddcup.data_10_percent_corrected", header=None,
                    names = ['duration', 'protocol_type', 'service','flag', 'src_bytes', 'dst_bytes',
                              'land', 'wrong_fragment', 'urgent', 'hot', 'num_failed_logins', 'logged_in',
@@ -125,27 +121,55 @@ if __name__ == '__main__':
                              'dst_host_srv_diff_host_rate', 'dst_host_serror_rate', 'dst_host_srv_serror_rate',
                              'dst_host_rerror_rate', 'dst_host_srv_rerror_rate', 'Class'])
 
+    dataSet_total = pd.concat([train,test], ignore_index=True)
 
-    #TRAIN
-    x_train = train.iloc[:,:-1].values  #riga - ultima colonna
-    y_train = train.iloc[:,41].values #ultima colonna
+    dataSet_total = pd.DataFrame(dataSet_total, columns=['duration', 'protocol_type', 'service','flag', 'src_bytes', 'dst_bytes',
+                             'land', 'wrong_fragment', 'urgent', 'hot', 'num_failed_logins', 'logged_in',
+                             'num_compromised', 'root_shell', 'su_attempted', 'num_root',
+                             'num_file_creations', 'num_shells', 'num_access_files', 'num_outbound_cmds',
+                             'is_host_login', 'is_guest_login', 'count', 'srv_count', 'serror_rate',
+                             'srv_serror_rate', 'rerror_rate', 'srv_rerror_rate', 'same_srv_rate',
+                             'diff_srv_rate', 'srv_diff_host_rate', 'dst_host_count', 'dst_host_srv_count',
+                             'dst_host_same_srv_rate', 'dst_host_diff_srv_rate', 'dst_host_same_src_port_rate',
+                             'dst_host_srv_diff_host_rate', 'dst_host_serror_rate', 'dst_host_srv_serror_rate',
+                             'dst_host_rerror_rate', 'dst_host_srv_rerror_rate', 'Class'])
+
+    x_dataSet = dataSet_total.drop(columns=['Class'])
+    y_dataSet = dataSet_total['Class']
 
 
-    #encoding train
     le = LabelEncoder()
-    x_train[:,1] = le.fit_transform(x_train[:,1]) #protocol_type
-    x_train[:,2] = le.fit_transform(x_train[:,2]) #service
-    x_train[:,3] = le.fit_transform(x_train[:,3])#flag
+    x_dataSet['protocol_type'] = le.fit_transform(x_dataSet['protocol_type'])
+    x_dataSet['service'] = le.fit_transform(x_dataSet['service'])
+    x_dataSet['flag'] = le.fit_transform(x_dataSet['flag'])
+
+    continuous = ['duration', 'src_bytes', 'dst_bytes', 'wrong_fragment', 'urgent', 'hot', 'num_failed_logins',
+                'num_compromised', 'root_shell', 'su_attempted', 'num_root', 'num_file_creations', 'num_shells',
+                'num_access_files', 'num_outbound_cmds', 'count', 'srv_count', 'serror_rate', 'srv_serror_rate',
+                'rerror_rate', 'srv_rerror_rate', 'same_srv_rate', 'diff_srv_rate', 'srv_diff_host_rate',
+                'dst_host_count', 'dst_host_srv_count', 'dst_host_same_srv_rate', 'dst_host_diff_srv_rate',
+                'dst_host_same_src_port_rate', 'dst_host_srv_diff_host_rate', 'dst_host_serror_rate',
+                'dst_host_srv_serror_rate', 'dst_host_rerror_rate', 'dst_host_srv_rerror_rate']
+
+    discrete = ['protocol_type', 'service', 'flag', 'land', 'logged_in', 'is_host_login', 'is_guest_login']
 
 
-    #TEST
-    x_test = test.iloc[:,:-1].values
-    y_test = test.iloc[:,41].values
+    disc = KBinsDiscretizer(n_bins=24, encode='onehot-dense')
+    app = disc.fit_transform(x_dataSet[continuous])
+    app = pd.DataFrame(app)
+    x_dataSet = pd.concat([x_dataSet[discrete], app], axis=1)
 
-    #encoding test
-    x_test[:,1] = le.fit_transform(x_test[:,1]) #protocol_type
-    x_test[:,2] = le.fit_transform(x_test[:,2]) #service
-    x_test[:,3] = le.fit_transform(x_test[:,3]) #flag
+
+    x = pd.DataFrame(x_dataSet)
+    y = pd.DataFrame(y_dataSet)
+
+    x_train = x.iloc[:494021,:].values
+    x_test = x.iloc[494021:,:].values
+
+    y_train = y.iloc[:494021,:].values.ravel()
+    y_test = y.iloc[494021:,:].values.ravel()
+
+
 
     y_b_train = y_assignment(y_train)
     y_b_test = y_assignment(y_test)
@@ -153,5 +177,6 @@ if __name__ == '__main__':
 
     experiment = input('Inserisci 1 per before o 2 per after \n')
     function(experiment)
+
 
     plt.show()
